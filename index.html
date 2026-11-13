@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ms"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kira OT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#6b7280;--ac:#0f766e;--bd:#e3e6ea;--wk:#fff4e0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--card:#1b2026;--tx:#eceff3;--mu:#98a1ad;--ac:#2dd4bf;--bd:#2c333b;--wk:#33290f}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,sans-serif}
+.w{max-width:640px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0 12px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--mu);margin-bottom:3px}
+input,select,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px;box-sizing:border-box;max-width:100%}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g .f{grid-column:1/-1}
+.g input,.g select{width:100%}
+.sc{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:460px}
+th{font-size:12px;color:var(--mu);text-align:left;padding:4px}
+td{padding:3px 4px;border-top:1px solid var(--bd);vertical-align:middle}
+tr.we td{background:var(--wk)}
+td input[type=time]{width:100px;padding:5px}
+td select{padding:5px}
+.o{font-weight:600;text-align:right;white-space:nowrap}
+.o small{display:block;font-weight:400;color:var(--mu);font-size:11px}
+.r div{display:flex;justify-content:space-between;padding:4px 0}
+.t{border-top:1px solid var(--bd);margin-top:4px;padding-top:8px!important;font-size:18px;font-weight:700;color:var(--ac)}
+.b{display:flex;gap:8px}
+button{background:var(--ac);color:#fff;border:0;font-weight:600;flex:1;padding:11px}
+button.s{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.n{font-size:12px;color:var(--mu);margin:6px 0 0}
+@media print{.noprint{display:none}body{background:#fff;color:#000}}
+</style></head><body><div class="w">
+<h1>Kira OT Bulanan</h1>
+<div class="c g noprint">
+<div class="f"><label>Gaji bulanan (RM)</label><input id="gaji" type="number" inputmode="decimal" placeholder="cth 3000"></div>
+<div class="f"><label>Lajur "Masuk" ialah</label><select id="mod"><option value="k">Masuk kerja (OT mula 9 jam selepas)</option><option value="o">Terus mula OT (cth 17:00)</option></select></div>
+<div><label>Bulan</label><select id="bln"></select></div>
+<div><label>Tahun</label><input id="thn" type="number"></div>
+</div>
+<div class="c sc"><table><thead><tr><th>Tarikh</th><th>Masuk</th><th>Balik</th><th>Jenis</th><th style="text-align:right">OT</th></tr></thead><tbody id="tb"></tbody></table>
+<p class="n">Masuk dibundar ke atas (8:16 → 8:30), balik dibundar ke bawah (17:29 → 17:15). Hari biasa: OT bermula 9 jam selepas masuk. Hujung minggu/cuti: kira dari masuk hingga balik.</p></div>
+<div class="b noprint" style="margin-bottom:12px"><button id="kira">Kira OT</button></div>
+<div class="c r" id="hasil">
+<div><span>Kadar sejam (hari biasa)</span><b id="r1">RM 0.00</b></div>
+<div><span>Kadar sejam (hujung minggu)</span><b id="r2">RM 0.00</b></div>
+<div><span>Jam OT hari biasa</span><b id="h1">0:00</b></div>
+<div><span>Jam OT hujung minggu</span><b id="h2">0:00</b></div>
+<div><span>OT hari biasa</span><b id="a1">RM 0.00</b></div>
+<div><span>OT hujung minggu</span><b id="a2">RM 0.00</b></div>
+<div class="t"><span>Jumlah OT</span><span id="tot">RM 0.00</span></div>
+</div>
+<div class="b noprint"><button id="pdf">Muat turun PDF</button><button class="s" id="prn">Cetak</button></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const HR=['Ahd','Isn','Sel','Rab','Kha','Jum','Sab'];
+const BL=['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+const now=new Date();
+BL.forEach((b,i)=>$('bln').add(new Option(b,i)));
+$('bln').value=now.getMonth();$('thn').value=now.getFullYear();
+try{const g=localStorage.getItem('ot_gaji');if(g)$('gaji').value=g}catch(e){}
+let rows=[];
+const pm=t=>{if(!t)return null;const[a,b]=t.split(':').map(Number);return a*60+b};
+const fm=m=>Math.floor(m/60)+':'+String(m%60).padStart(2,'0');
+const rm=n=>'RM '+n.toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
+function build(){
+  const y=+$('thn').value,m=+$('bln').value,n=new Date(y,m+1,0).getDate();
+  $('tb').innerHTML='';rows=[];
+  for(let d=1;d<=n;d++){
+    const dow=new Date(y,m,d).getDay(),we=dow==0||dow==6;
+    const tr=document.createElement('tr');if(we)tr.className='we';
+    tr.innerHTML=`<td>${d} ${HR[dow]}</td><td><input type="time" class="i"></td><td><input type="time" class="o2"></td><td><select><option value="b">Biasa</option><option value="w">Hujung/Cuti</option></select></td><td class="o">-</td>`;
+    tr.querySelector('select').value=we?'w':'b';
+    tr.addEventListener('input',calc);tr.addEventListener('change',calc);
+    $('tb').appendChild(tr);
+    rows.push({tr,d,dow,ot:0,type:'b',rin:null,rout:null});
+  }
+  calc();
+}
+function calc(){
+  let wd=0,we=0;
+  rows.forEach(r=>{
+    const[i,o]=[...r.tr.querySelectorAll('input')];
+    const s=r.tr.querySelector('select').value;
+    r.type=s;r.tr.className=s=='w'?'we':'';
+    let a=pm(i.value),b=pm(o.value),ot=0;r.rin=r.rout=null;
+    if(a!==null&&b!==null){
+      if(b<a)b+=1440;
+      const ra=Math.ceil(a/15)*15,rb=Math.floor(b/15)*15;
+      r.rin=ra;r.rout=rb;
+      ot=s=='w'||$('mod').value=='o'?Math.max(0,rb-ra):Math.max(0,rb-(ra+540));
+    }
+    r.ot=ot;
+    r.tr.querySelector('.o').innerHTML=r.rin===null?'-':fm(ot)+'<small>'+fm(r.rin%1440)+' – '+fm(r.rout%1440)+'</small>';
+    if(s=='w')we+=ot;else wd+=ot;
+  });
+  const g=+$('gaji').value||0;
+  try{localStorage.setItem('ot_gaji',$('gaji').value)}catch(e){}
+  const k1=g*12*1.125/313/8,k2=g*12*1.25/313/8;
+  const a1=k1*wd/60,a2=k2*we/60;
+  $('r1').textContent=rm(k1);$('r2').textContent=rm(k2);
+  $('h1').textContent=fm(wd);$('h2').textContent=fm(we);
+  $('a1').textContent=rm(a1);$('a2').textContent=rm(a2);
+  $('tot').textContent=rm(a1+a2);
+  window._s={wd,we,k1,k2,a1,a2,g};
+}
+['gaji'].forEach(i=>$(i).addEventListener('input',calc));
+['bln','thn'].forEach(i=>$(i).addEventListener('change',build));
+$('prn').onclick=()=>window.print();
+$('kira').onclick=()=>{calc();$('hasil').scrollIntoView({behavior:'smooth'})};
+$('gaji').addEventListener('change',calc);$('mod').addEventListener('change',calc);
+$('pdf').onclick=()=>{
+  try{
+    const{jsPDF}=window.jspdf,doc=new jsPDF(),s=window._s;
+    const t=BL[$('bln').value]+' '+$('thn').value;
+    doc.setFontSize(14);doc.text('Laporan OT - '+t,14,16);
+    doc.setFontSize(10);doc.text('Gaji: '+rm(s.g),14,23);
+    doc.autoTable({startY:28,head:[['Tarikh','Masuk','Balik','Jenis','Jam OT']],
+      body:rows.map(r=>[r.d+' '+HR[r.dow],r.rin===null?'-':fm(r.rin%1440),r.rin===null?'-':fm(r.rout%1440),r.type=='w'?'Hujung/Cuti':'Biasa',r.rin===null?'-':fm(r.ot)]),
+      styles:{fontSize:8,cellPadding:1.5},headStyles:{fillColor:[15,118,110]}});
+    doc.autoTable({startY:doc.lastAutoTable.finalY+6,theme:'plain',styles:{fontSize:10},
+      body:[['Kadar sejam hari biasa',rm(s.k1)],['Kadar sejam hujung minggu',rm(s.k2)],['Jam OT hari biasa',fm(s.wd)],['Jam OT hujung minggu',fm(s.we)],['OT hari biasa',rm(s.a1)],['OT hujung minggu',rm(s.a2)],['JUMLAH OT',rm(s.a1+s.a2)]]});
+    doc.save('OT-'+t.replace(' ','-')+'.pdf');
+  }catch(e){window.print()}
+};
+build();
+</script></body></html>
